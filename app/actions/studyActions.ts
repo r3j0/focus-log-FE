@@ -10,7 +10,7 @@ export async function startStudyAction(userId: number) {
     const response = await fetch(`${BACKEND_URL}/study/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, started_at: new Date().toISOString() }),
+      body: JSON.stringify({ user_id: userId}),
       cache: 'no-store', 
     });
 
@@ -28,15 +28,13 @@ export async function startStudyAction(userId: number) {
   }
 }
 
-export async function stopStudyAction(userId: number, startedAt: string) {
+export async function stopStudyAction(userId: number) {
   try {
     const response = await fetch(`${BACKEND_URL}/study/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: userId,
-        started_at: startedAt,
-        ended_at: new Date().toISOString(),
       }),
       cache: 'no-store',
     });

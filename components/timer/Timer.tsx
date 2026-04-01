@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useTransition } from 'react';
 import { useStudyStore } from '@/store/useStudyStore';
-import { startStudyAction, stopStudyAction } from '@/app/actions/studyActions';
+import { startStudyAction, stopStudyAction } from '@/app/actions/studyActions'; 
 
 const MOCK_USER_ID = 1;
 
@@ -40,7 +40,7 @@ export default function Timer() {
     startTransition(async () => {
       if (isStudying && startedAt) {
         // 1. 공부 종료 처리 (F-03, F-05)
-        const result = await stopStudyAction(MOCK_USER_ID, startedAt);
+        const result = await stopStudyAction(MOCK_USER_ID);
         if (result.success) {
           stopStudy(); // 서버 저장 성공 시 로컬 타이머 정지 (F-04)
           alert('공부 기록이 성공적으로 저장되었습니다.');
