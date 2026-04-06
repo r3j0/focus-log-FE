@@ -1,4 +1,7 @@
-﻿const ACCESS_TOKEN_KEY = "access_token";
+﻿export const DEMO_NICKNAME = "focus-demo";
+export const DEMO_PASSWORD = "FocusDemo!123";
+
+const ACCESS_TOKEN_KEY = "access_token";
 const NICKNAME_KEY = "nickname";
 
 export function getAccessToken() {
@@ -18,7 +21,6 @@ export function getNickname() {
 }
 
 export function isAuthenticated() {
-  // 현재 정책은 "닉네임 존재 여부"를 로그인 기준으로 사용.
   return Boolean(getNickname());
 }
 
@@ -32,7 +34,6 @@ export function setAuthSession(params: { nickname: string; accessToken?: string 
   if (params.accessToken) {
     window.localStorage.setItem(ACCESS_TOKEN_KEY, params.accessToken);
   } else {
-    // 토큰이 없는 백엔드 응답도 허용.
     window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   }
 }
@@ -55,7 +56,5 @@ export function clearAuthSession() {
 }
 
 export function clearAccessToken() {
-  // 기존 호출부 호환용 alias.
   clearAuthSession();
 }
-

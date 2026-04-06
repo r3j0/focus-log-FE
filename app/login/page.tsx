@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setAuthSession } from "../../lib/auth";
+import { DEMO_NICKNAME, DEMO_PASSWORD, setAuthSession } from "../../lib/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -56,16 +56,23 @@ async function readApiError(response: Response, fallback: string) {
 export default function LoginPage() {
   const router = useRouter();
   const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    // 공백 닉네임은 프론트에서 먼저 검증.
     const trimmedNickname = nickname.trim();
+    const trimmedPassword = password.trim();
+
     if (!trimmedNickname) {
       setError("닉네임을 입력해 주세요.");
+      return;
+    }
+
+    if (!trimmedPassword) {
+      setError("비밀번호를 입력해 주세요.");
       return;
     }
 
@@ -73,12 +80,20 @@ export default function LoginPage() {
     setError("");
 
     try {
+      if (trimmedNickname === DEMO_NICKNAME && trimmedPassword === DEMO_PASSWORD) {
+        setAuthSession({
+          nickname: trimmedNickname,
+        });
+        router.push("/main");
+        return;
+      }
+
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ nickname: trimmedNickname }),
+        body: JSON.stringify({ nickname: trimmedNickname, password: trimmedPassword }),
       });
 
       if (!response.ok) {
@@ -89,11 +104,9 @@ export default function LoginPage() {
       try {
         data = (await response.json()) as AuthResponse;
       } catch {
-        // 토큰 없이 200만 내려주는 서버도 있어 빈 객체 허용.
         data = {};
       }
 
-      // 로그인 성공 시 로컬 세션 저장.
       setAuthSession({
         nickname: trimmedNickname,
         accessToken: data.access_token ?? data.token ?? null,
@@ -112,7 +125,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-zinc-100 p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-zinc-900">로그인</h1>
-        <p className="mt-2 text-sm text-zinc-600">닉네임으로 간편 로그인할 수 있습니다.</p>
+        <p className="mt-2 text-sm text-zinc-600">닉네임과 비밀번호로 로그인할 수 있습니다.</p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <label className="text-sm font-medium text-zinc-700">
@@ -124,6 +137,18 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none ring-zinc-400 focus:ring-2"
               placeholder="닉네임을 입력해 주세요"
               maxLength={20}
+              required
+            />
+          </label>
+
+          <label className="text-sm font-medium text-zinc-700">
+            비밀번호
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none ring-zinc-400 focus:ring-2"
+              placeholder="비밀번호를 입력해 주세요"
               required
             />
           </label>
@@ -151,4 +176,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

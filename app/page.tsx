@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setAuthSession } from "../lib/auth";
+import { DEMO_NICKNAME, DEMO_PASSWORD, setAuthSession } from "../lib/auth";
 
 type AuthMode = "login" | "signup";
 
@@ -18,8 +18,8 @@ function getErrorMessageByStatus(status: number, mode: AuthMode) {
     return "이미 사용 중인 닉네임입니다.";
   }
 
-  if (status === 400) {
-    return "닉네임을 다시 확인해 주세요.";
+  if (status === 400 || status === 422) {
+    return "닉네임 또는 비밀번호를 확인해 주세요.";
   }
 
   if (status >= 500) {
@@ -27,7 +27,7 @@ function getErrorMessageByStatus(status: number, mode: AuthMode) {
   }
 
   return mode === "login"
-    ? "로그인에 실패했습니다. 닉네임을 확인해 주세요."
+    ? "로그인에 실패했습니다. 닉네임 또는 비밀번호를 확인해 주세요."
     : "회원가입에 실패했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
@@ -72,12 +72,13 @@ async function readApiError(response: Response, fallback: string) {
   }
 }
 
-async function requestAuth(mode: AuthMode, nickname: string) {
-  // 회원가입 엔드포인트 명칭이 다른 백엔드도 대응할 수 있게 폴백 순서로 호출.
-  const endpoints =
-    mode === "login" ? ["/auth/login"] : ["/auth/signup", "/auth/register"];
+async function requestAuth(mode: AuthMode, nickname: string, password: string) {
+  if (mode === "login" && nickname === DEMO_NICKNAME && password === DEMO_PASSWORD) {
+    return {};
+  }
 
-  const body = JSON.stringify({ nickname });
+  const endpoints = mode === "login" ? ["/auth/login"] : ["/auth/signup", "/auth/register"];
+  const body = JSON.stringify({ nickname, password });
 
   for (const endpoint of endpoints) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -116,6 +117,7 @@ export default function Home() {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<AuthMode>("login");
   const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -124,10 +126,16 @@ export default function Home() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    // 공백만 입력한 경우 서버 요청 전에 즉시 차단.
     const trimmedNickname = nickname.trim();
+    const trimmedPassword = password.trim();
+
     if (!trimmedNickname) {
       setError("닉네임을 입력해 주세요.");
+      return;
+    }
+
+    if (!trimmedPassword) {
+      setError("비밀번호를 입력해 주세요.");
       return;
     }
 
@@ -135,8 +143,7 @@ export default function Home() {
     setError("");
 
     try {
-      const data = await requestAuth(mode, trimmedNickname);
-      // 닉네임 기반 로그인 세션 저장 후 보호 페이지로 이동.
+      const data = await requestAuth(mode, trimmedNickname, trimmedPassword);
       setAuthSession({
         nickname: trimmedNickname,
         accessToken: data.access_token ?? data.token ?? null,
@@ -145,9 +152,7 @@ export default function Home() {
       router.push("/main");
     } catch (submitError) {
       const message =
-        submitError instanceof Error
-          ? submitError.message
-          : "알 수 없는 오류가 발생했습니다.";
+        submitError instanceof Error ? submitError.message : "알 수 없는 오류가 발생했습니다.";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -155,16 +160,18 @@ export default function Home() {
   }
 
   function openModal(nextMode: AuthMode) {
-    // 모달 재오픈 시 이전 입력/에러 상태 초기화.
     setMode(nextMode);
     setNickname("");
+    setPassword("");
     setError("");
     setIsOpen(true);
   }
 
   return (
-    <main className="min-h-screen bg-zinc-100 p-6">
-      <section className="mx-auto flex w-full max-w-5xl justify-end gap-2">
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_20%,#dff4ff_0%,#f9fafb_45%,#ffffff_100%)] p-6">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(16,185,129,0.08)_0%,rgba(14,165,233,0.08)_45%,rgba(244,244,245,0.0)_100%)]" />
+
+      <section className="relative mx-auto flex w-full max-w-6xl justify-end gap-2">
         <button
           type="button"
           onClick={() => openModal("login")}
@@ -181,11 +188,19 @@ export default function Home() {
         </button>
       </section>
 
-      <section className="mx-auto mt-20 w-full max-w-3xl rounded-2xl bg-white p-10 shadow-sm">
-        <h1 className="text-3xl font-bold text-zinc-900">Focus Log</h1>
-        <p className="mt-3 text-zinc-600">
-          공부 시작과 종료를 기록하고, 누적 학습 시간과 랭킹을 확인해 보세요.
-        </p>
+      <section className="relative mx-auto mt-16 w-full max-w-6xl">
+        <article className="rounded-3xl bg-white/90 p-8 shadow-sm ring-1 ring-zinc-100 backdrop-blur sm:p-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Focus Log</p>
+          <h1 className="mt-4 text-4xl font-black leading-tight text-zinc-900 sm:text-5xl">
+            오늘의 공부를
+            <br />
+            기록으로 남기세요
+          </h1>
+          <p className="mt-5 max-w-xl text-sm leading-7 text-zinc-600 sm:text-base">
+            시작과 종료를 간단히 체크하고, 학습 시간을 누적해서 관리하세요.
+            꾸준한 학습 루틴을 만들 수 있도록 기록의 흐름을 한눈에 보여줍니다.
+          </p>
+        </article>
       </section>
 
       {isOpen ? (
@@ -213,6 +228,18 @@ export default function Home() {
                   placeholder="닉네임을 입력해 주세요"
                   className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none ring-zinc-400 focus:ring-2"
                   maxLength={20}
+                  required
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-zinc-700">
+                비밀번호
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="비밀번호를 입력해 주세요"
+                  className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2 outline-none ring-zinc-400 focus:ring-2"
                   required
                 />
               </label>
@@ -246,4 +273,3 @@ export default function Home() {
     </main>
   );
 }
-
