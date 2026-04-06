@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
-import Providers from "./providers"; // 👈 1. 서버 통신용 파일 불러오기 추가!
+import Providers from "./providers"; // 경로가 다르면 수정해주세요! (./providers 혹은 ../providers)
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,11 +19,8 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className={`${inter.className} bg-gray-50 flex min-h-screen`}>
-        
-        {/* 🌟 2. Navbar와 메인 화면 전체를 Providers로 감싸주기! 🌟 */}
         <Providers>
-          
-          {/* 좌측 Navbar 영역 (F-08) */}
+          {/* 좌측 Navbar 영역 */}
           <nav className="w-64 bg-white border-r shadow-sm flex flex-col p-6 sticky top-0 h-screen">
             <Link href="/" className="font-extrabold text-3xl text-blue-600 mb-10 tracking-tight">
               focus log.
@@ -53,9 +50,7 @@ export default function RootLayout({
           <main className="flex-1 p-8 overflow-y-auto">
             {children}
           </main>
-
         </Providers>
-        
       </body>
     </html>
   );
