@@ -1,14 +1,6 @@
 "use client";
 
-import { useState } from "react";
 
-export default function RecordsPage() {
-  // 기간 필터 상태 (today, week, month)
-  const [activeTab, setActiveTab] = useState("today");
-  // 공부 중인지 확인하는 상태 (F-03 관련 뼈대)
-  const [isStudying, setIsStudying] = useState(false);
-
-  // 가짜(Dummy) 개인 공부 기록 데이터
   const dummyRecords = {
     today: [
       { id: 1, date: "2026-04-05", startTime: "10:00", endTime: "12:00", duration: "2시간 00분" },
@@ -30,48 +22,17 @@ export default function RecordsPage() {
   return (
     <div className="max-w-4xl mx-auto p-8 flex flex-col md:flex-row gap-8">
       
-      {/* 1. 타이머 영역 (좌측) */}
+
       <div className="flex-1 bg-white shadow-md rounded-lg p-8 border flex flex-col items-center justify-center min-h-[400px]">
         <h2 className="text-2xl font-bold mb-4">현재 학습 상태</h2>
         
         {isStudying && (
-          <span className="mb-6 text-sm bg-green-500 text-white px-3 py-1 rounded-full font-medium">
+
             공부 중 ✏️
           </span>
         )}
         
-        {/* 실제 개발 시에는 setInterval 등을 이용해 시간이 흘러가게 구현할 예정 */}
-        <div className="text-6xl font-bold mb-10 text-gray-800 tabular-nums">
-          00:00:00
-        </div>
-        
-        <div className="flex gap-4">
-          <button
-            onClick={() => setIsStudying(true)}
-            disabled={isStudying}
-            className={`px-6 py-3 rounded-lg font-bold text-lg transition-colors ${
-              isStudying 
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed" 
-                : "bg-blue-500 text-white hover:bg-blue-600"
-            }`}
-          >
-            공부 시작
-          </button>
-          <button
-            onClick={() => setIsStudying(false)}
-            disabled={!isStudying}
-            className={`px-6 py-3 rounded-lg font-bold text-lg transition-colors ${
-              !isStudying 
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed" 
-                : "bg-red-500 text-white hover:bg-red-600"
-            }`}
-          >
-            공부 종료
-          </button>
-        </div>
-      </div>
 
-      {/* 2. 개인 기록 조회 영역 (우측) */}
       <div className="flex-1 bg-white shadow-md rounded-lg p-6 border">
         <h2 className="text-xl font-bold mb-4">내 공부 기록</h2>
         
@@ -123,4 +84,4 @@ export default function RecordsPage() {
       
     </div>
   );
-}
+
