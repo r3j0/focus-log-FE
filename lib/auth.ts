@@ -96,6 +96,7 @@ export function setAuthSession(params: {
 
   window.localStorage.setItem(NICKNAME_KEY, params.nickname);
   window.localStorage.setItem(ACCESS_TOKEN_KEY, params.accessToken);
+  window.localStorage.removeItem(STUDY_STARTED_AT_KEY);
 
   if (params.refreshToken !== undefined) {
     if (params.refreshToken) {

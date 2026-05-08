@@ -3,22 +3,140 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ProtectedPage from "../components/protectedPage";
-import { fetchUserDailyRecord, startStudy, stopStudy } from "../../lib/api";
+import { fetchUserDailyRecord, startStudy, stopStudy, type UserRecordSummary } from "../../lib/api";
 import { getAccessToken } from "../../lib/auth";
 import { formatClock, formatDateInputValue, formatDuration, formatTimer } from "../../lib/format";
 import { useStudyStore } from "../../store/useStudyStore";
+
+function getRecordDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 10);
+  }
+
+  return formatDateInputValue(parsed);
+}
+
+function getDurationSeconds(startedAt: string, endedAt: string) {
+  const startedTime = new Date(startedAt).getTime();
+  const endedTime = new Date(endedAt).getTime();
+
+  if (Number.isNaN(startedTime) || Number.isNaN(endedTime)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((endedTime - startedTime) / 1000));
+}
+
+function closeActiveRecords(
+  summary: UserRecordSummary | undefined,
+  stoppedAt: string,
+  stoppedStartedAt: string | null,
+) {
+  if (!summary) {
+    return summary;
+  }
+
+  let changed = false;
+  let durationDelta = 0;
+  const records = summary.records.map((record) => {
+    if (!record.isActive || !record.startedAt) {
+      return record;
+    }
+
+    changed = true;
+    const nextDurationSeconds = Math.max(
+      record.durationSeconds,
+      getDurationSeconds(record.startedAt, stoppedAt),
+    );
+    durationDelta += nextDurationSeconds - record.durationSeconds;
+
+    return {
+      ...record,
+      endedAt: stoppedAt,
+      durationSeconds: nextDurationSeconds,
+      isActive: false,
+    };
+  });
+
+  if (changed) {
+    return {
+      ...summary,
+      totalDurationSeconds: summary.totalDurationSeconds + durationDelta,
+      records,
+    };
+  }
+
+  if (!stoppedStartedAt || getRecordDate(stoppedStartedAt) !== summary.date) {
+    return summary;
+  }
+
+  const durationSeconds = getDurationSeconds(stoppedStartedAt, stoppedAt);
+
+  return {
+    ...summary,
+    totalDurationSeconds: summary.totalDurationSeconds + durationSeconds,
+    records: [
+      {
+        id: `completed-${stoppedStartedAt}`,
+        date: summary.date,
+        startedAt: stoppedStartedAt,
+        endedAt: stoppedAt,
+        durationSeconds,
+        isActive: false,
+      },
+      ...summary.records,
+    ],
+  };
+}
+
+function openActiveRecord(summary: UserRecordSummary | undefined, startedAt: string) {
+  const startedDate = getRecordDate(startedAt);
+
+  if (!startedDate) {
+    return summary;
+  }
+
+  const activeRecord = {
+    id: `active-${startedAt}`,
+    date: startedDate,
+    startedAt,
+    endedAt: null,
+    durationSeconds: 0,
+    isActive: true,
+  };
+
+  if (!summary) {
+    return {
+      date: startedDate,
+      totalDurationSeconds: 0,
+      records: [activeRecord],
+    };
+  }
+
+  return {
+    ...summary,
+    records: [
+      activeRecord,
+      ...summary.records.filter(
+        (record) => !(record.isActive || record.startedAt === startedAt),
+      ),
+    ],
+  };
+}
 
 export default function RecordsPage() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(() => formatDateInputValue(new Date()));
   const [now, setNow] = useState(() => Date.now());
   const [message, setMessage] = useState("");
-  const { isStudying, startedAt, hydrateStudySession, startStudy: startLocalStudy, stopStudy: stopLocalStudy } =
-    useStudyStore();
-
-  useEffect(() => {
-    hydrateStudySession();
-  }, [hydrateStudySession]);
+  const [ignoredActiveStartedAt, setIgnoredActiveStartedAt] = useState<string | null>(null);
+  const { isStudying, startedAt, startStudy: startLocalStudy, stopStudy: stopLocalStudy } = useStudyStore();
 
   useEffect(() => {
     if (!isStudying || !startedAt) {
@@ -43,8 +161,9 @@ export default function RecordsPage() {
     return Math.max(0, Math.floor((now - startedTime) / 1000));
   }, [isStudying, now, startedAt]);
 
+  const selectedDateRecordsKey = ["user-record", selectedDate];
   const recordQuery = useQuery({
-    queryKey: ["user-record", selectedDate],
+    queryKey: selectedDateRecordsKey,
     queryFn: () => {
       const token = getAccessToken();
 
@@ -65,10 +184,20 @@ export default function RecordsPage() {
       }
 
       await startStudy(token);
+      return new Date().toISOString();
     },
-    onSuccess: () => {
-      startLocalStudy();
+    onSuccess: (newStartedAt) => {
+      const startedDate = getRecordDate(newStartedAt) ?? formatDateInputValue(new Date());
+
+      setIgnoredActiveStartedAt(null);
+      startLocalStudy(newStartedAt);
+      setNow(Date.now());
+      setSelectedDate(startedDate);
+      queryClient.setQueryData<UserRecordSummary>(["user-record", startedDate], (summary) =>
+        openActiveRecord(summary, newStartedAt),
+      );
       setMessage("공부를 시작했습니다.");
+      void queryClient.invalidateQueries({ queryKey: ["user-record"] });
       void queryClient.invalidateQueries({ queryKey: ["rank"] });
     },
     onError: (error) => {
@@ -85,9 +214,17 @@ export default function RecordsPage() {
       }
 
       await stopStudy(token);
+      return new Date().toISOString();
     },
-    onSuccess: () => {
+    onSuccess: (stoppedAt) => {
+      const stoppedStartedAt = startedAt;
+
+      setIgnoredActiveStartedAt(stoppedStartedAt);
+      queryClient.setQueriesData<UserRecordSummary>({ queryKey: ["user-record"] }, (summary) =>
+        closeActiveRecords(summary, stoppedAt, stoppedStartedAt),
+      );
       stopLocalStudy();
+      setNow(Date.now());
       setMessage("공부 기록이 저장되었습니다.");
       void queryClient.invalidateQueries({ queryKey: ["user-record"] });
       void queryClient.invalidateQueries({ queryKey: ["rank"] });
@@ -97,8 +234,72 @@ export default function RecordsPage() {
     },
   });
 
+  useEffect(() => {
+    if (!recordQuery.isSuccess) {
+      return;
+    }
+
+    const activeRecord = recordQuery.data.records.find(
+      (record) => record.isActive && record.startedAt,
+    );
+
+    if (activeRecord?.startedAt && activeRecord.startedAt !== ignoredActiveStartedAt) {
+      if (activeRecord.startedAt !== startedAt) {
+        startLocalStudy(activeRecord.startedAt);
+      }
+      return;
+    }
+
+    if (isStudying) {
+      stopLocalStudy();
+    }
+  }, [
+    ignoredActiveStartedAt,
+    isStudying,
+    recordQuery.data,
+    recordQuery.isSuccess,
+    startLocalStudy,
+    startedAt,
+    stopLocalStudy,
+  ]);
+
   const isPending = startMutation.isPending || stopMutation.isPending;
-  const records = recordQuery.data?.records ?? [];
+  const isStudyStatusChecking = recordQuery.isLoading || !recordQuery.isFetched;
+  const isCurrentStudying = !isStudyStatusChecking && isStudying;
+  const displayElapsedSeconds = isCurrentStudying ? elapsedSeconds : 0;
+  const serverRecords = recordQuery.data?.records ?? [];
+  const liveRecordDate = getRecordDate(startedAt);
+  const liveServerRecord = serverRecords.find(
+    (record) => record.isActive && record.startedAt === startedAt,
+  );
+  const liveRecord =
+    isCurrentStudying && startedAt && liveRecordDate === selectedDate
+      ? {
+          id: liveServerRecord?.id ?? `active-${startedAt}`,
+          date: selectedDate,
+          startedAt,
+          endedAt: null,
+          durationSeconds: displayElapsedSeconds,
+          isActive: true,
+        }
+      : null;
+  const records = liveRecord
+    ? [
+        liveRecord,
+        ...serverRecords.filter(
+          (record) => !(record.isActive && record.startedAt === liveRecord.startedAt),
+        ),
+      ]
+    : serverRecords;
+  const totalDurationSeconds = liveRecord
+    ? Math.max(0, (recordQuery.data?.totalDurationSeconds ?? 0) - (liveServerRecord?.durationSeconds ?? 0)) +
+      liveRecord.durationSeconds
+    : recordQuery.data?.totalDurationSeconds ?? 0;
+  const startButtonLabel = isStudyStatusChecking
+    ? "상태 확인 중..."
+    : startMutation.isPending
+      ? "시작 중..."
+      : "공부 시작";
 
   return (
     <ProtectedPage
@@ -109,27 +310,27 @@ export default function RecordsPage() {
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
           <div className="flex flex-col items-center text-center">
             <h2 className="text-lg font-semibold text-zinc-900">현재 학습 상태</h2>
-            <p className={`mt-2 text-sm font-semibold ${isStudying ? "text-emerald-700" : "text-zinc-500"}`}>
-              {isStudying ? "공부 중" : "대기 중"}
+            <p className={`mt-2 text-sm font-semibold ${isCurrentStudying ? "text-emerald-700" : "text-zinc-500"}`}>
+              {isCurrentStudying ? "공부 중" : isStudyStatusChecking ? "상태 확인 중" : "대기 중"}
             </p>
 
             <div className="mt-6 font-mono text-5xl font-bold tabular-nums tracking-tight text-zinc-900 sm:text-6xl">
-              {formatTimer(elapsedSeconds)}
+              {formatTimer(displayElapsedSeconds)}
             </div>
 
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <button
                 type="button"
                 onClick={() => startMutation.mutate()}
-                disabled={isStudying || isPending}
+                disabled={isCurrentStudying || isPending || isStudyStatusChecking}
                 className="rounded-lg bg-sky-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
-                {startMutation.isPending ? "시작 중..." : "공부 시작"}
+                {startButtonLabel}
               </button>
               <button
                 type="button"
                 onClick={() => stopMutation.mutate()}
-                disabled={!isStudying || isPending}
+                disabled={!isCurrentStudying || isPending}
                 className="rounded-lg bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
                 {stopMutation.isPending ? "종료 중..." : "공부 종료"}
@@ -147,7 +348,7 @@ export default function RecordsPage() {
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">일별 공부 기록</h2>
               <p className="mt-1 text-sm text-zinc-600">
-                총 공부 시간: {formatDuration(recordQuery.data?.totalDurationSeconds ?? 0)}
+                총 공부 시간: {formatDuration(totalDurationSeconds)}
               </p>
             </div>
 
@@ -185,7 +386,14 @@ export default function RecordsPage() {
           {records.length > 0 ? (
             <div className="mt-6 divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200">
               {records.map((record) => (
-                <div key={record.id} className="flex items-center justify-between gap-4 bg-white p-4">
+                <div
+                  key={record.id}
+                  className={`flex items-center justify-between gap-4 p-4 ${
+                    record.isActive
+                      ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200"
+                      : "bg-white"
+                  }`}
+                >
                   <div>
                     <p className="text-sm font-semibold text-zinc-900">
                       {formatClock(record.startedAt)} - {formatClock(record.endedAt)}
@@ -193,8 +401,8 @@ export default function RecordsPage() {
                     <p className="mt-1 text-xs text-zinc-500">{record.date}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-sky-700">
-                      {formatDuration(record.durationSeconds)}
+                    <p className={`text-sm font-bold ${record.isActive ? "text-emerald-700" : "text-sky-700"}`}>
+                      {record.isActive ? formatTimer(record.durationSeconds) : formatDuration(record.durationSeconds)}
                     </p>
                     {record.isActive ? (
                       <p className="mt-1 text-xs font-semibold text-emerald-700">진행 중</p>
