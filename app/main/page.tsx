@@ -1,42 +1,29 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import ProtectedPage from "../components/protectedPage";
 
 export default function MainPage() {
   return (
-    <ProtectedPage
-      title="메인 페이지"
-      description="원하는 페이지로 이동해서 기능을 사용하세요."
-    >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ProtectedPage title="메인 페이지" description="공부 기록과 랭킹을 확인하세요.">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/records"
-          className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow"
+          className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow"
         >
-          <p className="text-base font-semibold text-zinc-900">기록 페이지</p>
-          <p className="mt-2 text-sm text-zinc-600">
-            공부 기록 관련 기능이 들어갈 페이지입니다.
+          <p className="text-base font-semibold text-zinc-900">타이머와 내 기록</p>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            공부 시작과 종료를 서버에 저장하고, 선택한 날짜의 공부 기록을 확인합니다.
           </p>
         </Link>
 
         <Link
           href="/ranking"
-          className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow"
+          className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow"
         >
-          <p className="text-base font-semibold text-zinc-900">랭킹 페이지</p>
-          <p className="mt-2 text-sm text-zinc-600">
-            유저 랭킹 관련 기능이 들어갈 페이지입니다.
-          </p>
-        </Link>
-
-        <Link
-          href="/settings"
-          className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-zinc-200 transition hover:-translate-y-0.5 hover:shadow"
-        >
-          <p className="text-base font-semibold text-zinc-900">설정 페이지</p>
-          <p className="mt-2 text-sm text-zinc-600">
-            사용자 설정 관련 기능이 들어갈 페이지입니다.
+          <p className="text-base font-semibold text-zinc-900">전체 랭킹</p>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            오늘, 이번 주, 이번 달 기준으로 누적 공부 시간을 비교합니다.
           </p>
         </Link>
       </div>

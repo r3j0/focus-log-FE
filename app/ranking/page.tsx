@@ -1,88 +1,102 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import ProtectedPage from "../components/protectedPage";
+import { fetchRank, type RankRange } from "../../lib/api";
+import { getAccessToken } from "../../lib/auth";
+import { formatDuration } from "../../lib/format";
+
+const rangeTabs: Array<{ value: RankRange; label: string }> = [
+  { value: "today", label: "오늘" },
+  { value: "week", label: "이번 주" },
+  { value: "month", label: "이번 달" },
+];
 
 export default function RankingPage() {
-  const [activeTab, setActiveTab] = useState("today");
+  const [activeRange, setActiveRange] = useState<RankRange>("today");
+  const rankQuery = useQuery({
+    queryKey: ["rank", activeRange],
+    queryFn: () => {
+      const token = getAccessToken();
 
-  // 1. 기간별로 다른 가짜 데이터 묶음을 준비합니다.
-  const dummyData = {
-    today: [
-      { id: 1, nickname: "박정근", totalTime: "3시간 30분", isStudying: true },
-      { id: 3, nickname: "전병건", totalTime: "2시간 40분", isStudying: true },
-      { id: 2, nickname: "이동현", totalTime: "1시간 15분", isStudying: false },
-      { id: 4, nickname: "이승종", totalTime: "0시간 50분", isStudying: false },
-    ],
-    week: [
-      { id: 1, nickname: "박정근", totalTime: "12시간 30분", isStudying: true },
-      { id: 2, nickname: "이동현", totalTime: "10시간 15분", isStudying: false },
-      { id: 3, nickname: "전병건", totalTime: "8시간 40분", isStudying: true },
-      { id: 4, nickname: "이승종", totalTime: "5시간 20분", isStudying: false },
-    ],
-    month: [
-      { id: 2, nickname: "이동현", totalTime: "45시간 10분", isStudying: false },
-      { id: 1, nickname: "박정근", totalTime: "42시간 00분", isStudying: true },
-      { id: 3, nickname: "전병건", totalTime: "38시간 20분", isStudying: true },
-      { id: 4, nickname: "이승종", totalTime: "20시간 00분", isStudying: false },
-    ]
-  };
+      if (!token) {
+        throw new Error("로그인이 필요합니다.");
+      }
 
-  // 2. 현재 클릭된 탭(activeTab)에 맞는 데이터만 쏙 빼옵니다.
-  const currentRankings = dummyData[activeTab as keyof typeof dummyData];
+      return fetchRank(token, activeRange);
+    },
+  });
+
+  const rankings = rankQuery.data ?? [];
 
   return (
-    <div className="max-w-2xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-6 text-center">🏆 focus log 전체 랭킹</h1>
-
-      <div className="flex justify-center gap-2 mb-6">
-        <button
-          onClick={() => setActiveTab("today")}
-          className={`px-4 py-2 rounded-full font-medium transition-colors ${
-            activeTab === "today" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          오늘
-        </button>
-        <button
-          onClick={() => setActiveTab("week")}
-          className={`px-4 py-2 rounded-full font-medium transition-colors ${
-            activeTab === "week" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          이번 주
-        </button>
-        <button
-          onClick={() => setActiveTab("month")}
-          className={`px-4 py-2 rounded-full font-medium transition-colors ${
-            activeTab === "month" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          이번 달
-        </button>
-      </div>
-
-      <div className="bg-white shadow-md rounded-lg overflow-hidden border">
-        {/* 3. 빼온 데이터(currentRankings)로 화면을 그립니다. */}
-        {currentRankings.map((user, index) => (
-          <div
-            key={user.id}
-            className={`flex items-center justify-between p-4 border-b last:border-0 ${
-              user.isStudying ? "bg-green-50" : "bg-white"
-            }`}
-          >
-            <div className="flex items-center gap-4">
-              <span className="font-bold text-xl text-gray-400 w-6">{index + 1}</span>
-              <span className="font-semibold text-lg">{user.nickname}</span>
-              {user.isStudying && (
-                <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full font-medium tracking-wide">
-                  공부 중 ✏️
-                </span>
-              )}
-            </div>
-            <div className="text-gray-700 font-medium">{user.totalTime}</div>
+    <ProtectedPage title="전체 랭킹" description="기간별 누적 공부 시간을 확인합니다.">
+      <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold text-zinc-900">기간별 랭킹</h2>
+          <div className="flex flex-wrap gap-2">
+            {rangeTabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setActiveRange(tab.value)}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                  activeRange === tab.value
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+
+        {rankQuery.isLoading ? (
+          <p className="mt-6 rounded-lg bg-zinc-100 px-4 py-3 text-sm text-zinc-600">
+            랭킹을 불러오는 중입니다.
+          </p>
+        ) : null}
+
+        {rankQuery.error ? (
+          <p className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+            {rankQuery.error instanceof Error ? rankQuery.error.message : "랭킹을 불러오지 못했습니다."}
+          </p>
+        ) : null}
+
+        {!rankQuery.isLoading && !rankQuery.error && rankings.length === 0 ? (
+          <p className="mt-6 rounded-lg bg-zinc-100 px-4 py-3 text-sm text-zinc-600">
+            아직 표시할 랭킹이 없습니다.
+          </p>
+        ) : null}
+
+        {rankings.length > 0 ? (
+          <div className="mt-6 divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200">
+            {rankings.map((user) => (
+              <div
+                key={`${user.rank}-${user.userId ?? user.nickname}`}
+                className={`flex items-center justify-between gap-4 p-4 ${
+                  user.isStudying ? "bg-emerald-50" : "bg-white"
+                }`}
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="w-8 text-lg font-bold tabular-nums text-zinc-400">{user.rank}</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold text-zinc-900">{user.nickname}</p>
+                    {user.isStudying ? (
+                      <p className="mt-1 text-xs font-semibold text-emerald-700">공부 중</p>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="shrink-0 text-sm font-bold text-zinc-700">
+                  {formatDuration(user.totalDurationSeconds)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    </ProtectedPage>
   );
 }
