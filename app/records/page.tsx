@@ -1,192 +1,211 @@
 "use client";
 
-import { useState, useEffect } from "react";
-// 🚨 주의: 아래 두 임포트 경로는 동현님 폴더 구조에 맞게 수정이 필요할 수 있습니다!
-import { useStudyStore } from "../../store/useStudyStore"; 
-import { startStudyAction, stopStudyAction } from "../actions/studyActions";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import ProtectedPage from "../components/protectedPage";
+import { fetchUserDailyRecord, startStudy, stopStudy } from "../../lib/api";
+import { getAccessToken } from "../../lib/auth";
+import { formatClock, formatDateInputValue, formatDuration, formatTimer } from "../../lib/format";
+import { useStudyStore } from "../../store/useStudyStore";
 
 export default function RecordsPage() {
-  // 1. 전역 상태 (타이머)
-  const { isStudying, elapsedTime, start, stop, tick } = useStudyStore();
-  
-  // 2. 지역 상태 (UI 제어)
-  const [activeTab, setActiveTab] = useState("today");
-  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+  const [selectedDate, setSelectedDate] = useState(() => formatDateInputValue(new Date()));
+  const [now, setNow] = useState(() => Date.now());
+  const [message, setMessage] = useState("");
+  const { isStudying, startedAt, hydrateStudySession, startStudy: startLocalStudy, stopStudy: stopLocalStudy } =
+    useStudyStore();
 
-  // 3. 타이머 1초마다 증가 로직
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isStudying) {
-      interval = setInterval(() => {
-        tick();
-      }, 1000);
+    hydrateStudySession();
+  }, [hydrateStudySession]);
+
+  useEffect(() => {
+    if (!isStudying || !startedAt) {
+      return;
     }
-    return () => clearInterval(interval);
-  }, [isStudying, tick]);
 
-  // 4. 시간 예쁘게 보여주기 (HH:MM:SS)
-  const formatTime = (seconds: number) => {
-    const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
-    const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-    const s = String(seconds % 60).padStart(2, "0");
-    return `${h}:${m}:${s}`;
-  };
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [isStudying, startedAt]);
 
-  // 🔑 5. 토큰 가져오기 (승종님이 저장한 방식에 따라 수정 필요!)
-  const getAccessToken = () => {
-    // 임시로 localStorage나 쿠키에서 토큰을 가져온다고 가정합니다.
-    // (만약 lib/auth.ts에 getAuthSession 같은 함수가 있다면 그걸 쓰셔도 됩니다!)
-    return localStorage.getItem("accessToken") || ""; 
-  };
+  const elapsedSeconds = useMemo(() => {
+    if (!isStudying || !startedAt) {
+      return 0;
+    }
 
-  // [F-03] 공부 시작 버튼 클릭 시
-  const handleStart = async () => {
-    if (isPending) return;
-    setIsPending(true);
-    
-    try {
+    const startedTime = new Date(startedAt).getTime();
+
+    if (Number.isNaN(startedTime)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.floor((now - startedTime) / 1000));
+  }, [isStudying, now, startedAt]);
+
+  const recordQuery = useQuery({
+    queryKey: ["user-record", selectedDate],
+    queryFn: () => {
       const token = getAccessToken();
+
       if (!token) {
-        alert("로그인이 필요합니다! (토큰 없음)");
-        return;
+        throw new Error("로그인이 필요합니다.");
       }
-      
-      // ✅ 서버에 '나 시작해!' 알리기 (토큰 전달)
-      await startStudyAction(token); 
-      start(); // 화면 타이머 시작
-      
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "시작 중 오류 발생");
-    } finally {
-      setIsPending(false);
-    }
-  };
 
-  // [F-05] 공부 종료 버튼 클릭 시
-  const handleStop = async () => {
-    if (isPending) return;
-    setIsPending(true);
-    
-    try {
+      return fetchUserDailyRecord(token, selectedDate);
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
       const token = getAccessToken();
-      // ✅ 서버에 '나 끝났어! 저장해줘!' 알리기 (토큰 전달)
-      await stopStudyAction(token); 
-      stop(); // 화면 타이머 정지 및 초기화
-      alert("공부 기록이 성공적으로 저장되었습니다! 🔥");
-      
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "종료 중 오류 발생");
-    } finally {
-      setIsPending(false);
-    }
-  };
 
-  // 병건 님이 만드신 가짜 데이터 (오른쪽 리스트용)
-  const dummyRecords = {
-    today: [
-      { id: 1, date: "2026-04-05", startTime: "10:00", endTime: "12:00", duration: "2시간 00분" },
-      { id: 2, date: "2026-04-05", startTime: "14:00", endTime: "15:30", duration: "1시간 30분" },
-    ],
-    week: [
-      { id: 1, date: "2026-04-05", duration: "3시간 30분" },
-      { id: 2, date: "2026-04-04", duration: "4시간 15분" },
-      { id: 3, date: "2026-04-03", duration: "2시간 50분" },
-    ],
-    month: [
-      { id: 1, week: "4월 1주차", duration: "15시간 20분" },
-      { id: 2, week: "3월 4주차", duration: "18시간 40분" },
-    ]
-  };
+      if (!token) {
+        throw new Error("로그인이 필요합니다.");
+      }
 
-  const currentRecords = dummyRecords[activeTab as keyof typeof dummyRecords] || [];
+      await startStudy(token);
+    },
+    onSuccess: () => {
+      startLocalStudy();
+      setMessage("공부를 시작했습니다.");
+      void queryClient.invalidateQueries({ queryKey: ["rank"] });
+    },
+    onError: (error) => {
+      setMessage(error instanceof Error ? error.message : "공부 시작에 실패했습니다.");
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      const token = getAccessToken();
+
+      if (!token) {
+        throw new Error("로그인이 필요합니다.");
+      }
+
+      await stopStudy(token);
+    },
+    onSuccess: () => {
+      stopLocalStudy();
+      setMessage("공부 기록이 저장되었습니다.");
+      void queryClient.invalidateQueries({ queryKey: ["user-record"] });
+      void queryClient.invalidateQueries({ queryKey: ["rank"] });
+    },
+    onError: (error) => {
+      setMessage(error instanceof Error ? error.message : "공부 종료에 실패했습니다.");
+    },
+  });
+
+  const isPending = startMutation.isPending || stopMutation.isPending;
+  const records = recordQuery.data?.records ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto p-8 flex flex-col md:flex-row gap-8">
-      
-      {/* 🟢 왼쪽: 동현님의 무대 (타이머 영역) */}
-      <div className="flex-1 bg-white shadow-md rounded-lg p-8 border flex flex-col items-center justify-center min-h-[400px]">
-        <h2 className="text-2xl font-bold mb-4">현재 학습 상태</h2>
-        
-        {isStudying ? (
-          <span className="text-green-600 font-semibold mb-2 text-lg">공부 중 ✏️</span>
-        ) : (
-          <span className="text-gray-500 font-semibold mb-2 text-lg">휴식 중 ☕️</span>
-        )}
-        
-        {/* 타이머 숫자 */}
-        <div className="text-6xl font-mono font-bold tracking-wider mb-8 text-gray-800">
-          {formatTime(elapsedTime)}
-        </div>
-        
-        {/* 시작/종료 버튼 */}
-        <div className="flex gap-4">
-          <button
-            onClick={handleStart}
-            disabled={isStudying || isPending}
-            className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
-          >
-            {isPending && !isStudying ? "시작 중..." : "공부 시작"}
-          </button>
-          <button
-            onClick={handleStop}
-            disabled={!isStudying || isPending}
-            className="px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 disabled:bg-gray-300 transition-colors"
-          >
-            {isPending && isStudying ? "종료 중..." : "공부 종료"}
-          </button>
-        </div>
-      </div>
+    <ProtectedPage
+      title="타이머와 내 기록"
+      description="공부 시작과 종료를 서버에 저장하고 일별 기록을 확인합니다."
+    >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-lg font-semibold text-zinc-900">현재 학습 상태</h2>
+            <p className={`mt-2 text-sm font-semibold ${isStudying ? "text-emerald-700" : "text-zinc-500"}`}>
+              {isStudying ? "공부 중" : "대기 중"}
+            </p>
 
-      {/* 🔵 오른쪽: 병건님의 UI (기록 리스트 영역) */}
-      <div className="flex-1 bg-white shadow-md rounded-lg p-6 border">
-        <h2 className="text-xl font-bold mb-4">내 공부 기록</h2>
-        
-        {/* 기간 필터 버튼 */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setActiveTab("today")}
-            className={`px-3 py-1.5 text-sm rounded-full font-medium transition-colors ${
-              activeTab === "today" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            오늘
-          </button>
-          <button
-            onClick={() => setActiveTab("week")}
-            className={`px-3 py-1.5 text-sm rounded-full font-medium transition-colors ${
-              activeTab === "week" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            이번 주
-          </button>
-          <button
-            onClick={() => setActiveTab("month")}
-            className={`px-3 py-1.5 text-sm rounded-full font-medium transition-colors ${
-              activeTab === "month" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            이번 달
-          </button>
-        </div>
-
-        {/* 기록 리스트 출력 */}
-        <div className="flex flex-col gap-3">
-          {currentRecords.map((record: any, index: number) => (
-            <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-md border border-gray-100">
-              <div className="flex flex-col">
-                <span className="font-semibold text-gray-700">{record.date || record.week}</span>
-                {record.startTime && (
-                  <span className="text-xs text-gray-500 mt-1">
-                    {record.startTime} ~ {record.endTime}
-                  </span>
-                )}
-              </div>
-              <span className="font-bold text-blue-600">{record.duration}</span>
+            <div className="mt-6 font-mono text-5xl font-bold tabular-nums tracking-tight text-zinc-900 sm:text-6xl">
+              {formatTimer(elapsedSeconds)}
             </div>
-          ))}
-        </div>
+
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => startMutation.mutate()}
+                disabled={isStudying || isPending}
+                className="rounded-lg bg-sky-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              >
+                {startMutation.isPending ? "시작 중..." : "공부 시작"}
+              </button>
+              <button
+                type="button"
+                onClick={() => stopMutation.mutate()}
+                disabled={!isStudying || isPending}
+                className="rounded-lg bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              >
+                {stopMutation.isPending ? "종료 중..." : "공부 종료"}
+              </button>
+            </div>
+
+            {message ? (
+              <p className="mt-5 rounded-lg bg-zinc-100 px-4 py-2 text-sm text-zinc-700">{message}</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">일별 공부 기록</h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                총 공부 시간: {formatDuration(recordQuery.data?.totalDurationSeconds ?? 0)}
+              </p>
+            </div>
+
+            <label className="text-sm font-medium text-zinc-700">
+              날짜
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+                className="mt-1 block rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2"
+              />
+            </label>
+          </div>
+
+          {recordQuery.isLoading ? (
+            <p className="mt-6 rounded-lg bg-zinc-100 px-4 py-3 text-sm text-zinc-600">
+              기록을 불러오는 중입니다.
+            </p>
+          ) : null}
+
+          {recordQuery.error ? (
+            <p className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              {recordQuery.error instanceof Error
+                ? recordQuery.error.message
+                : "기록을 불러오지 못했습니다."}
+            </p>
+          ) : null}
+
+          {!recordQuery.isLoading && !recordQuery.error && records.length === 0 ? (
+            <p className="mt-6 rounded-lg bg-zinc-100 px-4 py-3 text-sm text-zinc-600">
+              선택한 날짜의 기록이 없습니다.
+            </p>
+          ) : null}
+
+          {records.length > 0 ? (
+            <div className="mt-6 divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200">
+              {records.map((record) => (
+                <div key={record.id} className="flex items-center justify-between gap-4 bg-white p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-900">
+                      {formatClock(record.startedAt)} - {formatClock(record.endedAt)}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">{record.date}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-sky-700">
+                      {formatDuration(record.durationSeconds)}
+                    </p>
+                    {record.isActive ? (
+                      <p className="mt-1 text-xs font-semibold text-emerald-700">진행 중</p>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
       </div>
-      
-    </div>
+    </ProtectedPage>
   );
 }
